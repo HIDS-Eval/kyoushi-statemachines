@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "kyoushi-statemachines"
-version = "0.5.0"
-description = ""
+name = "kyoushi-statemachines-webshell"
+version = "0.1.0"
+description = "Minimal Kyoushi statemachine package for WordPress webshell exploit"
 authors = ["Maximilian Frank <maximilian.frank@ait.ac.at>"]
 license = "MIT"
 readme = 'README.md'  # Markdown files are supported
-repository = "https://github.com/ait-aecid/kyoushi-statemachines"
+repository = "https://github.com/HIDS-Eval/kyoushi-statemachines.git"
 homepage = "https://ait-aecid.github.io/kyoushi-statemachines"
 packages = [
   { include = "cr_kyoushi", from = "src" }

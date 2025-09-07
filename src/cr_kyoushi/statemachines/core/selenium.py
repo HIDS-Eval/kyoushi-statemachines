@@ -372,23 +372,34 @@ def get_webdriver_manager(config: SeleniumConfig) -> DriverManager:
 
     manager_options = dict(manager_info["manager_options"])
     manager_options.update(filter_none_keys(config.driver_manager.dict()))
+    
     # convert log level to int
     manager_options["log_level"] = int(manager_options["log_level"])
 
     return manager_info["manager"](**manager_options)
 
 
+# def install_webdriver(config: SeleniumConfig) -> str:
+#     """Installs the configured Selenium driver and returns the install path.
+
+#     Args:
+#         config: The Selenium configuration determining which driver gets installed and how.
+
+#     Returns:
+#         Path to the installed driver binary.
+#     """
+#     manager = get_webdriver_manager(config)
+#     return manager.install()
+# BEGIN ANSIBLE PATCH: override install_webdriver to avoid download
 def install_webdriver(config: SeleniumConfig) -> str:
-    """Installs the configured Selenium driver and returns the install path.
+    """Returns a static path to the locally installed webdriver binary."""
+    return {
+        WebdriverType.CHROME: "/usr/local/bin/chromedriver",
+        WebdriverType.CHROMIUM: "/usr/local/bin/chromedriver",
+        WebdriverType.FIREFOX: "/usr/local/bin/geckodriver",
+    }.get(config.type, "/usr/local/bin/chromedriver")  # Default fallback
+# END ANSIBLE PATCH
 
-    Args:
-        config: The Selenium configuration determining which driver gets installed and how.
-
-    Returns:
-        Path to the installed driver binary.
-    """
-    manager = get_webdriver_manager(config)
-    return manager.install()
 
 
 def chrome_enable_download_headless(driver: webdriver.Remote, download_dir: str):
@@ -402,7 +413,7 @@ def chrome_enable_download_headless(driver: webdriver.Remote, download_dir: str)
     }
     driver.execute("send_command", params)
 
-
+# BEGIN PATCH
 def get_webdriver(
     config: SeleniumConfig,
     driver_path: Optional[str] = None,
@@ -418,9 +429,16 @@ def get_webdriver(
     driver_info = _MANAGER_MAP[config.type]
     fox_profile = None
 
-    # install webdriver and get path if not already given
-    if driver_path is None:
-        driver_path = install_webdriver(config)
+    # BEGIN ANSIBLE PATCH: force static driver path
+    driver_path = {
+        WebdriverType.CHROME: "/usr/local/bin/chromedriver",
+        WebdriverType.CHROMIUM: "/usr/local/bin/chromedriver",
+        WebdriverType.FIREFOX: "/usr/local/bin/geckodriver",
+    }.get(config.type)
+
+    if not driver_path:
+        raise ValueError(f"Unsupported driver type: {config.type}")
+    # END ANSIBLE PATCH
 
     options = driver_info["driver_options"]
 
@@ -432,113 +450,69 @@ def get_webdriver(
     for arg in config.arguments:
         options.add_argument(arg)
 
-    if config.type != WebdriverType.EDGE and config.type != WebdriverType.IE:
-        # configure headless mode via driver options
+    if config.type not in [WebdriverType.EDGE, WebdriverType.IE]:
         options.set_headless(config.headless)
 
-    # configure SSL cert insecure option
     options.set_capability("acceptInsecureCerts", config.accept_insecure_ssl)
 
-    # configure proxy
     if config.proxy.enabled:
         proxy_url = f"{config.proxy.host}:{str(config.proxy.port)}"
         proxy = Proxy()
-
         proxy.proxy_type = ProxyType.MANUAL
         proxy.autodetect = False
         proxy.ftp_proxy = proxy_url
         if config.proxy.socks:
             proxy.socks_proxy = proxy_url
-            # auth settings
-            if config.proxy.username is not None and config.proxy.password is not None:
+            if config.proxy.username and config.proxy.password:
                 proxy.socks_username = config.proxy.username
                 proxy.socks_password = config.proxy.password
         else:
             proxy.http_proxy = proxy_url
             proxy.ssl_proxy = proxy_url
-
-        # options: webdriver.ChromeOptions
-        # apply proxy settings
         proxy.add_to_capabilities(options.capabilities)
         if config.proxy.socks:
-            # need to manually set the socksVersion since
-            # the proxy config object does not expose the setting
             options.capabilities["proxy"]["socksVersion"] = config.proxy.socks_version
 
-    download_path = (
-        # set download path if we have one
-        str(config.download.path.absolute())
-        # otherwise set empty string
-        if config.download.path is not None
-        else ""
-    )
+    download_path = str(config.download.path.absolute()) if config.download.path else ""
     if not config.download.prompt:
-
-        # create download directory
         os.makedirs(download_path, exist_ok=True)
-
-        if config.type == WebdriverType.CHROME or config.type == WebdriverType.CHROMIUM:
-            download_options = webdriver.ChromeOptions()
-            download_options
-            options.experimental_options.setdefault("prefs", {}).update(
-                {
-                    "download.default_directory": download_path,
-                    "download.prompt_for_download": False,
-                    "download.directory_upgrade": True,
-                    "download.download_restrictions": 0,
-                    "safebrowsing_for_trusted_sources_enabled": False,
-                    "safebrowsing.enabled": False,
-                }
-            )
+        if config.type in [WebdriverType.CHROME, WebdriverType.CHROMIUM]:
+            options.experimental_options.setdefault("prefs", {}).update({
+                "download.default_directory": download_path,
+                "download.prompt_for_download": False,
+                "download.directory_upgrade": True,
+                "download.download_restrictions": 0,
+                "safebrowsing.enabled": False,
+                "safebrowsing_for_trusted_sources_enabled": False,
+            })
         elif config.type == WebdriverType.FIREFOX:
             fox_profile = webdriver.FirefoxProfile()
-            fox_profile.set_preference(
-                "browser.download.folderList", 2
-            )  # custom location
-            fox_profile.set_preference(
-                "browser.download.manager.showWhenStarting", False
-            )
+            fox_profile.set_preference("browser.download.folderList", 2)
+            fox_profile.set_preference("browser.download.manager.showWhenStarting", False)
             fox_profile.set_preference("browser.download.dir", download_path)
-            fox_profile.set_preference("browser.download.manager.alertOnEXEOpen", False)
-            fox_profile.set_preference("browser.download.manager.closeWhenDone", False)
-            fox_profile.set_preference(
-                "browser.download.manager.focusWhenStarting", False
-            )
-            # application/octet-stream,application/vnd.ms-excel
-            fox_profile.set_preference(
-                "browser.helperApps.neverAsk.saveToDisk",
-                ",".join(config.download.autosave),
-            )
-            # need to disable pdf viewer as well
+            fox_profile.set_preference("browser.helperApps.neverAsk.saveToDisk", ",".join(config.download.autosave))
             fox_profile.set_preference("pdfjs.disabled", True)
 
-    # common arguments
     args = {
         "executable_path": driver_path,
         "options": options,
     }
 
-    if fox_profile is not None:
+    if fox_profile:
         args["firefox_profile"] = fox_profile
 
-    # create driver
     driver = driver_info["driver"](**args)
 
-    # for chrome we need to enable auto download
-    # after start
-    if not config.download.prompt and (
-        config.type == WebdriverType.CHROME or config.type == WebdriverType.CHROMIUM
-    ):
+    if not config.download.prompt and config.type in [WebdriverType.CHROME, WebdriverType.CHROMIUM]:
         chrome_enable_download_headless(driver, download_path)
 
-    # configure driver implicit wait time
     driver.implicitly_wait(config.implicit_wait)
-
-    # configure browser display size and position
-    driver.set_window_size(width=config.window_width, height=config.window_height)
-    driver.set_window_position(x=config.window_x_position, y=config.window_y_position)
+    driver.set_window_size(config.window_width, config.window_height)
+    driver.set_window_position(config.window_x_position, config.window_y_position)
 
     return driver
+
+
 
 
 def slow_type(
@@ -953,4 +927,4 @@ class Statemachine(SeleniumStatemachine[SeleniumContext]):
             driver=driver,
             main_window=driver.current_window_handle,
             fake=self.fake,
-        )
+        ) 
