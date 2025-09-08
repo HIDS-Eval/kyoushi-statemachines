@@ -34,16 +34,16 @@ class Context(Protocol):
 class ContextModel(BaseModel):
     """Beta user state machine context class"""
 
-    vpn_process: Optional[Popen]
-    """The VPN process for remote users"""
+    # vpn_process: Optional[Popen]
+    # """The VPN process for remote users"""
 
     web_shell: Optional[str] = Field(
         None,
         description="The url to the uploaded web shell",
     )
 
-    reverse_shell: Optional[listen]
-    """The reverse shell connection the attacker has created"""
+    # reverse_shell: Optional[listen]
+    # """The reverse shell connection the attacker has created"""
 
     class Config:
         arbitrary_types_allowed = True

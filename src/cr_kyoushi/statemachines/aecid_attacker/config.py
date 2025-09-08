@@ -299,40 +299,40 @@ class StatemachineConfig(BaseModel):
         ),
     )
 
-    escalate_start_time: Union[timedelta, datetime] = Field(
-        timedelta(0),
-        description=(
-            "The host user escalation start time "
-            "(can also be defined as timedelta relative to the attack start time)"
-        ),
-    )
+    # escalate_start_time: Union[timedelta, datetime] = Field(
+    #     timedelta(0),
+    #     description=(
+    #         "The host user escalation start time "
+    #         "(can also be defined as timedelta relative to the attack start time)"
+    #     ),
+    # )
 
     idle: IdleConfig = Field(
         IdleConfig(),
         description="The idle configuration for the state machine",
     )
 
-    vpn: FilePath = Field(
-        ...,
-        description="The VPN connection config to use",
-    )
+    # vpn: FilePath = Field(
+    #     ...,
+    #     description="The VPN connection config to use",
+    # )
 
-    recon: NetworkReconConfig = Field(
-        ...,
-        description="Network recon configuration",
-    )
+    # recon: NetworkReconConfig = Field(
+    #     ...,
+    #     description="Network recon configuration",
+    # )
 
     wordpress: WordpressAttackConfig = Field(
         ...,
         description="Wordpress attack configuration",
     )
 
-    escalate: EscalateConfig = Field(
-        ...,
-        description="The user escalation configuration",
-    )
+    # escalate: EscalateConfig = Field(
+    #     ...,
+    #     description="The user escalation configuration",
+    # )
 
     _check_start_time = validator("attack_start_time", allow_reuse=True)(_check_delta)
-    _check_escalate_time = validator("escalate_start_time", allow_reuse=True)(
-        _check_delta
-    )
+    # _check_escalate_time = validator("escalate_start_time", allow_reuse=True)(
+    #     _check_delta
+    # )
